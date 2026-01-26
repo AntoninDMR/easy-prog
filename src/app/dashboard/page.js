@@ -1,16 +1,20 @@
 "use client";
-
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import WeeklySummary from "@/components/WeeklySummary";
+import HeaderBar from "@/components/HeaderBar";
 
 import {
   DndContext,
   PointerSensor,
   closestCenter,
+  useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -20,6 +24,13 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 /* ---------------- utils dates ---------------- */
+
+function formatFRShort(date) {
+  return date.toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "long",
+  });
+}
 
 function toISODate(d) {
   const year = d.getFullYear();
@@ -35,6 +46,15 @@ function startOfWeekMonday(date) {
   d.setDate(d.getDate() + diff);
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+function getISOWeekNumber(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7; // lun=1..dim=7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum); // jeudi de la semaine ISO
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return weekNo;
 }
 
 function hhmmToMinutes(hhmm) {
@@ -123,19 +143,25 @@ function SortableWorkout({ workout, onClick }) {
         </div>
       </button>
 
-      {/* Poignée de drag (barre) */}
+      {/* Poignée de drag (3 barres, zone plus grande) */}
       <div className="mt-2 flex justify-center">
-        <div
+        <button
+          type="button"
           {...attributes}
           {...listeners}
           title="Glisser pour déplacer"
-          className="w-10 h-[2px] bg-gray-400 rounded-full cursor-grab hover:bg-gray-600 transition"
-        />
+          className="cursor-grab active:cursor-grabbing px-3 py-2 rounded"
+        >
+          <div className="flex flex-col gap-[2px] items-center">
+            <div className="w-10 h-[2px] bg-gray-400 rounded-full" />
+            <div className="w-10 h-[2px] bg-gray-400 rounded-full" />
+            <div className="w-10 h-[2px] bg-gray-400 rounded-full" />
+          </div>
+        </button>
       </div>
     </div>
   );
 }
-
 /* ---------------- Mini Modal component ---------------- */
 
 function Modal({ open, title, children, onClose }) {
@@ -152,6 +178,19 @@ function Modal({ open, title, children, onClose }) {
         </div>
         {children}
       </div>
+    </div>
+  );
+}
+
+function DayColumn({ dayKey, className = "", children }) {
+  const { setNodeRef, isOver } = useDroppable({ id: dayKey });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={[className, isOver ? "ring-2 ring-black/40" : ""].join(" ")}
+    >
+      {children}
     </div>
   );
 }
@@ -195,8 +234,7 @@ export default function DashboardPage() {
   const [newActColor, setNewActColor] = useState("#22c55e");
   const [newActUnit, setNewActUnit] = useState("km"); // km / m
 
-  const weekStart = useMemo(() => startOfWeekMonday(new Date()), []);
-  const weekDays = useMemo(() => {
+  const [weekStart, setWeekStart] = useState(() => startOfWeekMonday(new Date()));  const weekDays = useMemo(() => {
     return Array.from({ length: 7 }).map((_, i) => {
       const d = new Date(weekStart);
       d.setDate(weekStart.getDate() + i);
@@ -204,7 +242,9 @@ export default function DashboardPage() {
     });
   }, [weekStart]);
 
-  const sensors = useSensors(useSensor(PointerSensor));
+  const sensors = useSensors(
+  useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+);
   const dayLabels = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
   function resetForm() {
@@ -513,97 +553,202 @@ export default function DashboardPage() {
     return null;
   }
 
-  async function onDragEnd(event) {
+    async function onDragEnd(event) {
     const { active, over } = event;
     if (!over) return;
-    if (active.id === over.id) return;
 
-    const fromDayKey = findDayKeyByWorkoutId(active.id);
-    const toDayKey = findDayKeyByWorkoutId(over.id);
+    const activeId = active.id;
+    const overId = over.id;
 
-    // même jour seulement
-    if (!fromDayKey || !toDayKey || fromDayKey !== toDayKey) return;
+    const fromDayKey = findDayKeyByWorkoutId(activeId);
 
-    const items = workoutsByDate[fromDayKey] ?? [];
-    const oldIndex = items.findIndex((w) => w.id === active.id);
-    const newIndex = items.findIndex((w) => w.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
+    // over peut être un item (id séance) OU une colonne (id = dayKey)
+    const toDayKey = findDayKeyByWorkoutId(overId) || overId;
 
-    const reordered = arrayMove(items, oldIndex, newIndex).map((w, idx) => ({
-      ...w,
-      position: idx,
+    if (!fromDayKey || !toDayKey) return;
+
+    const fromItems = workoutsByDate[fromDayKey] ?? [];
+    const toItems = workoutsByDate[toDayKey] ?? [];
+
+    const activeIndex = fromItems.findIndex((w) => w.id === activeId);
+    if (activeIndex === -1) return;
+
+    const moved = fromItems[activeIndex];
+
+    // 1) retire du jour source
+    const newFrom = fromItems.filter((w) => w.id !== activeId);
+
+    // 2) insère dans le jour cible (à la fin si drop sur fond)
+    let newTo = [...toItems];
+
+    const overIndexInTo = newTo.findIndex((w) => w.id === overId);
+    const movedWithNewDate = { ...moved, workout_date: toDayKey };
+
+    if (overIndexInTo === -1) {
+      newTo.push(movedWithNewDate);
+    } else {
+      newTo.splice(overIndexInTo, 0, movedWithNewDate);
+    }
+
+    // 3) réindexer positions
+    const reindexedFrom = newFrom.map((w, idx) => ({ ...w, position: idx }));
+    const reindexedTo = newTo.map((w, idx) => ({ ...w, position: idx }));
+
+    // 4) update UI immédiat
+    setWorkoutsByDate((prev) => ({
+      ...prev,
+      [fromDayKey]: reindexedFrom,
+      [toDayKey]: reindexedTo,
     }));
 
-    setWorkoutsByDate((prev) => ({ ...prev, [fromDayKey]: reordered }));
+    // 5) update DB (date + positions)
+    const updates = [];
 
-    const updates = reordered.map((w) =>
-      supabase.from("workouts").update({ position: w.position }).eq("id", w.id)
+    // séance déplacée : nouvelle date + nouvelle position
+    const newPos = reindexedTo.findIndex((w) => w.id === activeId);
+    updates.push(
+      supabase
+        .from("workouts")
+        .update({
+          workout_date: toDayKey,
+          position: newPos,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", activeId)
     );
+
+    // positions jour source
+    for (const w of reindexedFrom) {
+      updates.push(
+        supabase
+          .from("workouts")
+          .update({ position: w.position, updated_at: new Date().toISOString() })
+          .eq("id", w.id)
+      );
+    }
+
+    // positions jour cible (sauf l'item déjà mis à jour)
+    for (const w of reindexedTo) {
+      if (w.id === activeId) continue;
+      updates.push(
+        supabase
+          .from("workouts")
+          .update({ position: w.position, updated_at: new Date().toISOString() })
+          .eq("id", w.id)
+      );
+    }
 
     const results = await Promise.all(updates);
     const anyError = results.find((r) => r.error)?.error;
-    if (anyError) alert("Erreur sauvegarde ordre: " + anyError.message);
+    if (anyError) alert("Erreur sauvegarde drag: " + anyError.message);
   }
 
   return (
-    <main className="min-h-screen bg-gray-100 px-6 py-10">
-      <div className="max-w-6xl mx-auto">
+  <main className="min-h-screen bg-gray-100 px-6 py-10">
+    <div className="mb-6">
+      <HeaderBar onLogout={handleLogout} />
+    </div>
+
+    <div className="max-w-6xl mx-auto">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold">Dashboard</h1>
             <p className="text-gray-600 mt-1">{email ? `User : ${email}` : "User"}</p>
             <p className="text-gray-700 mt-4 font-medium">Voici votre semaine d’entrainement.</p>
           </div>
-
-          <button onClick={handleLogout} className="px-4 py-2 bg-black text-white rounded">
-            Se déconnecter
-          </button>
         </div>
+
+        {/* Navigation semaine */}
+          <div className="mt-6 flex items-center justify-center gap-4">
+            <button
+              className="w-10 h-10 rounded-full bg-white border flex items-center justify-center hover:bg-gray-50"
+              onClick={() => {
+                const prev = new Date(weekStart);
+                prev.setDate(prev.getDate() - 7);
+                setWeekStart(startOfWeekMonday(prev));
+              }}
+              aria-label="Semaine précédente"
+            >
+              <ChevronLeft size={20} />
+            </button>
+
+            <div className="text-center">
+              <div className="font-semibold text-lg">
+                Semaine {getISOWeekNumber(weekStart)}
+                {" — "}
+                {formatFRShort(weekDays[0])} au {formatFRShort(weekDays[6])}
+              </div>
+            </div>
+
+            <button
+              className="w-10 h-10 rounded-full bg-white border flex items-center justify-center hover:bg-gray-50"
+              onClick={() => {
+                const next = new Date(weekStart);
+                next.setDate(next.getDate() + 7);
+                setWeekStart(startOfWeekMonday(next));
+              }}
+              aria-label="Semaine suivante"
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <div className="mt-8 grid grid-cols-1 sm:grid-cols-7 gap-3">
             {weekDays.map((d, i) => {
-              const dayKey = toISODate(d);
-              const items = workoutsByDate[dayKey] ?? [];
-              const dayNum = d.getDate();
+  const dayKey = toISODate(d);
+  const items = workoutsByDate[dayKey] ?? [];
+  const dayNum = d.getDate();
 
-              return (
-                <div
-                  key={dayKey}
-                  className="group bg-gray-200 hover:bg-gray-500 rounded p-3 min-h-[220px] transition flex flex-col"
-                >
-                  <div className="font-semibold">
-                    {dayLabels[i]}{" "}
-                    <span className="text-gray-600 group-hover:text-gray-100">({dayNum})</span>
-                  </div>
+  return (
+          <DayColumn
+            key={dayKey}
+            dayKey={dayKey}
+            className="group bg-gray-200 hover:bg-gray-500 rounded p-3 min-h-[220px] transition flex flex-col"
+          >
+            <div className="font-semibold">
+              {dayLabels[i]}{" "}
+              <span className="text-gray-600 group-hover:text-gray-100">({dayNum})</span>
+            </div>
 
-                  <div className="mt-3 space-y-2">
-                    <SortableContext items={items.map((w) => w.id)} strategy={verticalListSortingStrategy}>
-                      {items.length === 0 ? (
-                        <p className="text-sm text-gray-600 group-hover:text-gray-100">Aucun entrainement</p>
-                      ) : (
-                        items.map((w) => (
-                          <SortableWorkout key={w.id} workout={w} onClick={openDetail} />
-                        ))
-                      )}
-                    </SortableContext>
-                  </div>
+            <div className="mt-3 space-y-2">
+              <SortableContext
+                items={items.map((w) => w.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {items.length === 0 ? (
+                  <p className="text-sm text-gray-600 group-hover:text-gray-100">
+                    Aucun entrainement
+                  </p>
+                ) : (
+                  items.map((w) => (
+                    <SortableWorkout key={w.id} workout={w} onClick={openDetail} />
+                  ))
+                )}
+              </SortableContext>
+            </div>
 
-                  {/* + Ajouter en bas centré (hover) */}
-                  <div className="mt-auto pt-3 flex justify-center">
-                    <button
-                      onClick={() => openAddModal(d)}
-                      className="opacity-0 group-hover:opacity-100 transition px-3 py-2 rounded bg-white/60 hover:bg-white/80 text-sm flex items-center gap-2"
-                    >
-                      <span className="text-lg leading-none">＋</span>
-                      <span>Ajouter un entrainement</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+            {/* + Ajouter en bas centré (hover) */}
+            <div className="mt-auto pt-3 flex justify-center">
+              <button
+                onClick={() => openAddModal(d)}
+                className="opacity-0 group-hover:opacity-100 transition px-3 py-2 rounded bg-white/60 hover:bg-white/80 text-sm flex items-center gap-2"
+              >
+                <span className="text-lg leading-none">＋</span>
+                <span>Ajouter un entrainement</span>
+              </button>
+            </div>
+          </DayColumn>
+        );
+      })}
           </div>
         </DndContext>
+        <WeeklySummary
+        workoutsByDate={workoutsByDate}
+        activities={activities}
+        weekDays={weekDays}
+          goals={{ minutes: 360, workouts: 5 }} // 6h / 8 séances
+      />
       </div>
 
       {/* MODAL ADD */}
