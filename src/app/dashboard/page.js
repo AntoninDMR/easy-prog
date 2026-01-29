@@ -18,7 +18,6 @@ import {
 import {
   SortableContext,
   verticalListSortingStrategy,
-  arrayMove,
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -57,6 +56,13 @@ function getISOWeekNumber(date) {
   return weekNo;
 }
 
+// ✅ Convertit un ISO yyyy-mm-dd en clé "mon".."sun"
+function dayKeyToDow(isoDate) {
+  const d = new Date(isoDate + "T00:00:00");
+  const map = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  return map[d.getDay()];
+}
+
 function hhmmToMinutes(hhmm) {
   if (!hhmm) return null;
   const [hStr, mStr] = hhmm.split(":");
@@ -87,15 +93,9 @@ function metersToKm(m) {
 
 /* ---------------- Sortable item ---------------- */
 
-function SortableWorkout({ workout, onClick }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: workout.id });
+function SortableWorkout({ workout, onClick, onToggleDone }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: workout.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -115,25 +115,48 @@ function SortableWorkout({ workout, onClick }) {
         borderColor: border,
       }}
       className={[
-        "rounded px-2 py-2 text-sm select-none border",
-        "hover:brightness-95 transition",
+        "relative rounded-xl px-2.5 py-2.5 text-sm select-none border border-white/10",
+        "bg-white/5 backdrop-blur",
+        "hover:bg-white/10 transition",
         isDragging ? "opacity-60" : "opacity-100",
       ].join(" ")}
     >
+      {/* ✅ BULLE DONE (hors du bouton principal) */}
+      <label
+        className="absolute top-2 left-2 z-10"
+        onClick={(e) => e.stopPropagation()} // empêche d'ouvrir le détail
+      >
+        <input
+          type="checkbox"
+          checked={!!workout.done}
+          onChange={() => onToggleDone?.(workout)}
+          className="
+            h-5 w-5
+            rounded-md
+            border border-white/15
+            bg-black/20
+            backdrop-blur
+            shadow-sm
+            cursor-pointer
+            accent-white
+          "
+          title={workout.done ? "Marquer comme non fait" : "Marquer comme fait"}
+        />
+      </label>
+
       {/* Zone cliquable = ouvre le détail */}
       <button
         type="button"
         onClick={() => onClick(workout)}
         className="w-full text-left"
       >
-        <div className="flex items-center justify-between gap-2">
-          <div className="font-medium">
+        <div className="flex items-center gap-2 pl-6">
+          <div className="font-medium leading-tight">
             {workout.title || workout.activity?.name || "Séance"}
           </div>
         </div>
 
-        <div className="text-xs text-gray-700 mt-1">
-          {workout.duration_min != null ? `${workout.duration_min} min` : ""}
+        <div className="text-xs text-white/60 mt-1">          {workout.duration_min != null ? `${workout.duration_min} min` : ""}
           {workout.duration_min != null && workout.distance_m != null ? " • " : ""}
           {workout.distance_m != null
             ? workout.activity?.distance_unit === "m"
@@ -143,19 +166,18 @@ function SortableWorkout({ workout, onClick }) {
         </div>
       </button>
 
-      {/* Poignée de drag (3 barres, zone plus grande) */}
+      {/* Poignée de drag */}
       <div className="mt-2 flex justify-center">
         <button
           type="button"
           {...attributes}
           {...listeners}
           title="Glisser pour déplacer"
-          className="cursor-grab active:cursor-grabbing px-3 py-2 rounded"
-        >
+            className="cursor-grab active:cursor-grabbing px-3 py-2 rounded-lg hover:bg-white/10 transition"        >
           <div className="flex flex-col gap-[2px] items-center">
-            <div className="w-10 h-[2px] bg-gray-400 rounded-full" />
-            <div className="w-10 h-[2px] bg-gray-400 rounded-full" />
-            <div className="w-10 h-[2px] bg-gray-400 rounded-full" />
+            <div className="w-10 h-[2px] bg-white/25 rounded-full" />
+            <div className="w-10 h-[2px] bg-white/25 rounded-full" />
+            <div className="w-10 h-[2px] bg-white/25 rounded-full" />
           </div>
         </button>
       </div>
@@ -168,11 +190,15 @@ function Modal({ open, title, children, onClose }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-white rounded-xl shadow p-5">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative w-full max-w-lg rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] p-5 text-white">
         <div className="flex items-center justify-between gap-4 mb-4">
-          <h2 className="text-lg font-bold">{title}</h2>
-          <button className="px-3 py-2 border rounded" onClick={onClose}>
+          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+          <button
+            className="px-3 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition text-white/80"
+            onClick={onClose}
+            type="button"
+          >
             Fermer
           </button>
         </div>
@@ -186,10 +212,7 @@ function DayColumn({ dayKey, className = "", children }) {
   const { setNodeRef, isOver } = useDroppable({ id: dayKey });
 
   return (
-    <div
-      ref={setNodeRef}
-      className={[className, isOver ? "ring-2 ring-black/40" : ""].join(" ")}
-    >
+    <div ref={setNodeRef} className={[className, isOver ? "ring-2 ring-black/40" : ""].join(" ")}>
       {children}
     </div>
   );
@@ -198,16 +221,25 @@ function DayColumn({ dayKey, className = "", children }) {
 /* ---------------- Page ---------------- */
 
 export default function DashboardPage() {
-  
   const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [userId, setUserId] = useState(null);
 
+  const [doneOpen, setDoneOpen] = useState(false);
+  const [doneWorkout, setDoneWorkout] = useState(null);
+
+  const [actualDurationHHMM, setActualDurationHHMM] = useState("");
+  const [actualDistanceInput, setActualDistanceInput] = useState("");
+  const [actualNotes, setActualNotes] = useState("");
+
   const [editingWorkoutId, setEditingWorkoutId] = useState(null);
 
   const [activities, setActivities] = useState([]); // [{id,name,color,distance_unit}]
   const [workoutsByDate, setWorkoutsByDate] = useState({}); // { date: [workout...] }
+
+  // ✅ jour de repos (profil)
+  const [restDay, setRestDay] = useState(null); // "mon".."sun"
 
   // Modal states
   const [addOpen, setAddOpen] = useState(false);
@@ -234,7 +266,9 @@ export default function DashboardPage() {
   const [newActColor, setNewActColor] = useState("#22c55e");
   const [newActUnit, setNewActUnit] = useState("km"); // km / m
 
-  const [weekStart, setWeekStart] = useState(() => startOfWeekMonday(new Date()));  const weekDays = useMemo(() => {
+  const [weekStart, setWeekStart] = useState(() => startOfWeekMonday(new Date()));
+
+  const weekDays = useMemo(() => {
     return Array.from({ length: 7 }).map((_, i) => {
       const d = new Date(weekStart);
       d.setDate(weekStart.getDate() + i);
@@ -242,9 +276,7 @@ export default function DashboardPage() {
     });
   }, [weekStart]);
 
-  const sensors = useSensors(
-  useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
-);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const dayLabels = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
   function resetForm() {
@@ -263,7 +295,6 @@ export default function DashboardPage() {
   }
 
   async function ensureDefaultActivities(uid) {
-    // Si aucun, on crée Course/Vélo/Natation (par utilisateur)
     const { data: existing, error } = await supabase
       .from("activities")
       .select("id")
@@ -281,6 +312,68 @@ export default function DashboardPage() {
     }
   }
 
+ async function handleToggleDone(workout) {
+    if (!userId) return;
+
+    // ✅ si on décoche → update direct
+    if (workout.done) {
+      const { error } = await supabase
+        .from("workouts")
+        .update({
+          done: false,
+          done_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", workout.id);
+
+      if (error) {
+        alert("Erreur: " + error.message);
+        return;
+      }
+
+      await loadAll(userId);
+      return;
+    }
+
+    // ✅ si on coche → on ouvre la modale pour ajuster le réel (optionnel)
+    setDoneWorkout(workout);
+    setActualDurationHHMM(minutesToHHMM(workout.duration_min));
+    setActualDistanceInput(metersToDisplay(workout.activity, workout.distance_m));
+    setActualNotes("");
+
+    setDoneOpen(true);
+  }
+
+  async function confirmDone() {
+    if (!doneWorkout) return;
+
+    const act = doneWorkout.activity;
+
+    const actualDurationMin = hhmmToMinutes(actualDurationHHMM);
+    const actualDistanceM = displayToMeters(act, actualDistanceInput);
+
+    const { error } = await supabase
+      .from("workouts")
+      .update({
+        done: true,
+        done_at: new Date().toISOString(),
+        actual_duration_min: actualDurationMin,
+        actual_distance_m: actualDistanceM,
+        actual_notes: actualNotes.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", doneWorkout.id);
+
+    if (error) {
+      alert("Erreur validation: " + error.message);
+      return;
+    }
+
+    setDoneOpen(false);
+    setDoneWorkout(null);
+    await loadAll(userId);
+  }
+  
   async function loadAll(uid) {
     // Activities
     const { data: acts, error: actErr } = await supabase
@@ -301,7 +394,7 @@ export default function DashboardPage() {
     const { data: workouts, error: wErr } = await supabase
       .from("workouts")
       .select(
-        "id, workout_date, position, activity_id, title, duration_min, distance_m, notes, advanced, activity:activities(id,name,color,distance_unit)"
+        "id, workout_date, position, activity_id, title, duration_min, distance_m, done, done_at, actual_duration_min, actual_distance_m, actual_notes, notes, advanced, activity:activities(id,name,color,distance_unit)"
       )
       .gte("workout_date", from)
       .lte("workout_date", to)
@@ -331,12 +424,26 @@ export default function DashboardPage() {
       setUserId(data.user.id);
       setEmail(data.user.email ?? "");
 
+      // ✅ charger rest_day du profil
+      const { data: prof, error: pErr } = await supabase
+        .from("profiles")
+        .select("planning_prefs")
+        .eq("user_id", data.user.id)
+        .maybeSingle();
+
+      if (pErr) {
+        console.warn("Profil non chargé:", pErr.message);
+      } else {
+        setRestDay(prof?.planning_prefs?.rest_day ?? null);
+      }
+
       await ensureDefaultActivities(data.user.id);
       await loadAll(data.user.id);
     }
 
     init();
-  }, [router, weekDays]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, weekStart]);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -344,41 +451,42 @@ export default function DashboardPage() {
   }
 
   function openEditModal(workout) {
-  resetForm();
+    resetForm();
 
-  setEditingWorkoutId(workout.id);
-  setSelectedDate(workout.workout_date);
+    setEditingWorkoutId(workout.id);
+    setSelectedDate(workout.workout_date);
 
-  setCreateActivity(false);
-  setActivityId(String(workout.activity_id ?? ""));
+    setCreateActivity(false);
+    setActivityId(String(workout.activity_id ?? ""));
 
-  setTitle(workout.title ?? "");
-  setNotes(workout.notes ?? "");
+    setTitle(workout.title ?? "");
+    setNotes(workout.notes ?? "");
 
-  setDurationHHMM(minutesToHHMM(workout.duration_min));
+    setDurationHHMM(minutesToHHMM(workout.duration_min));
 
-  const unit = workout.activity?.distance_unit ?? "km";
-  if (workout.distance_m == null) {
-    setDistanceInput("");
-  } else if (unit === "m") {
-    setDistanceInput(String(workout.distance_m));
-  } else {
-    setDistanceInput(String(workout.distance_m / 1000));
+    const unit = workout.activity?.distance_unit ?? "km";
+    if (workout.distance_m == null) {
+      setDistanceInput("");
+    } else if (unit === "m") {
+      setDistanceInput(String(workout.distance_m));
+    } else {
+      setDistanceInput(String(workout.distance_m / 1000));
+    }
+
+    const adv = workout.advanced ?? {};
+    setAdvRpe(adv.rpe != null ? String(adv.rpe) : "");
+    setAdvAvgHr(adv.avg_hr != null ? String(adv.avg_hr) : "");
+    setAdvElevation(adv.elevation_m != null ? String(adv.elevation_m) : "");
+
+    setAddOpen(true);
   }
 
-  const adv = workout.advanced ?? {};
-  setAdvRpe(adv.rpe != null ? String(adv.rpe) : "");
-  setAdvAvgHr(adv.avg_hr != null ? String(adv.avg_hr) : "");
-  setAdvElevation(adv.elevation_m != null ? String(adv.elevation_m) : "");
-
-  setAddOpen(true);
-}
   function openAddModal(dateObj) {
-  resetForm();
-  setEditingWorkoutId(null); // 👈 important
-  setSelectedDate(toISODate(dateObj));
-  setAddOpen(true);
-}
+    resetForm();
+    setEditingWorkoutId(null);
+    setSelectedDate(toISODate(dateObj));
+    setAddOpen(true);
+  }
 
   function openDetail(workout) {
     setSelectedWorkout(workout);
@@ -390,7 +498,11 @@ export default function DashboardPage() {
     const parts = [act.name];
     if (durationMin != null) parts.push(`${durationMin} min`);
     if (distanceM != null) {
-      parts.push(act.distance_unit === "m" ? `${distanceM} m` : `${(distanceM / 1000).toFixed(1)} km`);
+      parts.push(
+        act.distance_unit === "m"
+          ? `${distanceM} m`
+          : `${(distanceM / 1000).toFixed(1)} km`
+      );
     }
     return parts.join(" — ");
   }
@@ -404,13 +516,11 @@ export default function DashboardPage() {
       return null;
     }
 
-    // upsert par (user_id, name)
     const { data, error } = await supabase
       .from("activities")
-      .upsert(
-        [{ user_id: uid, name, color: newActColor, distance_unit: newActUnit }],
-        { onConflict: "user_id,name" }
-      )
+      .upsert([{ user_id: uid, name, color: newActColor, distance_unit: newActUnit }], {
+        onConflict: "user_id,name",
+      })
       .select("id, name, color, distance_unit")
       .single();
 
@@ -419,7 +529,6 @@ export default function DashboardPage() {
       return null;
     }
 
-    // refresh activités
     setActivities((prev) => {
       const exists = prev.some((a) => a.id === data.id);
       const next = exists ? prev : [...prev, data];
@@ -430,67 +539,63 @@ export default function DashboardPage() {
   }
 
   async function handleSaveWorkout() {
-    console.log("SAVE CLICK", { editingWorkoutId, selectedDate, activityId, createActivity });
-  if (!userId || !selectedDate) return;
-  
+    if (!userId || !selectedDate) return;
 
-  // ✅ On calcule actId AVANT tout
-  const actId = await createOrGetActivityId(userId);
-  if (!actId) return;
+    const actId = await createOrGetActivityId(userId);
+    if (!actId) return;
 
-  const act =
-    activities.find((a) => a.id === actId) ||
-    (createActivity ? { name: newActName, distance_unit: newActUnit } : null);
+    const act =
+      activities.find((a) => a.id === actId) ||
+      (createActivity ? { name: newActName, distance_unit: newActUnit } : null);
 
-  const durationMin = hhmmToMinutes(durationHHMM);
+    const durationMin = hhmmToMinutes(durationHHMM);
 
-  let distanceM = null;
-  if (distanceInput !== "") {
-    if ((act?.distance_unit ?? "km") === "m") {
-      const n = Number(distanceInput);
-      distanceM = Number.isNaN(n) ? null : Math.round(n);
-    } else {
-      distanceM = kmToMeters(distanceInput);
+    let distanceM = null;
+    if (distanceInput !== "") {
+      if ((act?.distance_unit ?? "km") === "m") {
+        const n = Number(distanceInput);
+        distanceM = Number.isNaN(n) ? null : Math.round(n);
+      } else {
+        distanceM = kmToMeters(distanceInput);
+      }
     }
-  }
 
-  const finalTitle = title.trim()
-    ? title.trim()
-    : autoTitle(act, durationMin, distanceM);
+    const finalTitle = title.trim() ? title.trim() : autoTitle(act, durationMin, distanceM);
 
-  const advanced = {
-    ...(advRpe ? { rpe: Number(advRpe) } : {}),
-    ...(advAvgHr ? { avg_hr: Number(advAvgHr) } : {}),
-    ...(advElevation ? { elevation_m: Number(advElevation) } : {}),
-  };
+    const advanced = {
+      ...(advRpe ? { rpe: Number(advRpe) } : {}),
+      ...(advAvgHr ? { avg_hr: Number(advAvgHr) } : {}),
+      ...(advElevation ? { elevation_m: Number(advElevation) } : {}),
+    };
 
-  // ================== MODE ÉDITION ==================
-  if (editingWorkoutId) {
-    const { error } = await supabase
-      .from("workouts")
-      .update({
-        activity_id: actId,
-        title: finalTitle,
-        duration_min: durationMin,
-        distance_m: distanceM,
-        notes: notes.trim() || null,
-        advanced,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", editingWorkoutId);
+    if (editingWorkoutId) {
+      const { error } = await supabase
+        .from("workouts")
+        .update({
+          activity_id: actId,
+          title: finalTitle,
+          duration_min: durationMin,
+          distance_m: distanceM,
+          notes: notes.trim() || null,
+          advanced,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", editingWorkoutId);
 
-    if (error) {
-      alert("Erreur mise à jour: " + error.message);
+      if (error) {
+        alert("Erreur mise à jour: " + error.message);
+        return;
+      }
+
+      await loadAll(userId);
+      setAddOpen(false);
+      setEditingWorkoutId(null);
       return;
     }
 
-    await loadAll(userId);
-    setAddOpen(false);
-    setEditingWorkoutId(null);
-    return;
-  }
     const current = workoutsByDate[selectedDate] ?? [];
     const nextPosition = current.length;
+
     const { data, error } = await supabase
       .from("workouts")
       .insert({
@@ -531,12 +636,10 @@ export default function DashboardPage() {
       return;
     }
 
-    // remove locally
     setWorkoutsByDate((prev) => {
       const next = {};
       for (const [dayKey, items] of Object.entries(prev)) {
         const filtered = items.filter((w) => w.id !== id);
-        // reindex positions for that day
         next[dayKey] = filtered.map((w, idx) => ({ ...w, position: idx }));
       }
       return next;
@@ -553,7 +656,7 @@ export default function DashboardPage() {
     return null;
   }
 
-    async function onDragEnd(event) {
+  async function onDragEnd(event) {
     const { active, over } = event;
     if (!over) return;
 
@@ -561,8 +664,6 @@ export default function DashboardPage() {
     const overId = over.id;
 
     const fromDayKey = findDayKeyByWorkoutId(activeId);
-
-    // over peut être un item (id séance) OU une colonne (id = dayKey)
     const toDayKey = findDayKeyByWorkoutId(overId) || overId;
 
     if (!fromDayKey || !toDayKey) return;
@@ -575,66 +676,44 @@ export default function DashboardPage() {
 
     const moved = fromItems[activeIndex];
 
-    // 1) retire du jour source
     const newFrom = fromItems.filter((w) => w.id !== activeId);
 
-    // 2) insère dans le jour cible (à la fin si drop sur fond)
     let newTo = [...toItems];
-
     const overIndexInTo = newTo.findIndex((w) => w.id === overId);
     const movedWithNewDate = { ...moved, workout_date: toDayKey };
 
-    if (overIndexInTo === -1) {
-      newTo.push(movedWithNewDate);
-    } else {
-      newTo.splice(overIndexInTo, 0, movedWithNewDate);
-    }
+    if (overIndexInTo === -1) newTo.push(movedWithNewDate);
+    else newTo.splice(overIndexInTo, 0, movedWithNewDate);
 
-    // 3) réindexer positions
     const reindexedFrom = newFrom.map((w, idx) => ({ ...w, position: idx }));
     const reindexedTo = newTo.map((w, idx) => ({ ...w, position: idx }));
 
-    // 4) update UI immédiat
     setWorkoutsByDate((prev) => ({
       ...prev,
       [fromDayKey]: reindexedFrom,
       [toDayKey]: reindexedTo,
     }));
 
-    // 5) update DB (date + positions)
     const updates = [];
 
-    // séance déplacée : nouvelle date + nouvelle position
     const newPos = reindexedTo.findIndex((w) => w.id === activeId);
     updates.push(
       supabase
         .from("workouts")
-        .update({
-          workout_date: toDayKey,
-          position: newPos,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ workout_date: toDayKey, position: newPos, updated_at: new Date().toISOString() })
         .eq("id", activeId)
     );
 
-    // positions jour source
     for (const w of reindexedFrom) {
       updates.push(
-        supabase
-          .from("workouts")
-          .update({ position: w.position, updated_at: new Date().toISOString() })
-          .eq("id", w.id)
+        supabase.from("workouts").update({ position: w.position, updated_at: new Date().toISOString() }).eq("id", w.id)
       );
     }
 
-    // positions jour cible (sauf l'item déjà mis à jour)
     for (const w of reindexedTo) {
       if (w.id === activeId) continue;
       updates.push(
-        supabase
-          .from("workouts")
-          .update({ position: w.position, updated_at: new Date().toISOString() })
-          .eq("id", w.id)
+        supabase.from("workouts").update({ position: w.position, updated_at: new Date().toISOString() }).eq("id", w.id)
       );
     }
 
@@ -642,113 +721,166 @@ export default function DashboardPage() {
     const anyError = results.find((r) => r.error)?.error;
     if (anyError) alert("Erreur sauvegarde drag: " + anyError.message);
   }
+  function metersToDisplay(activity, meters) {
+    if (meters == null) return "";
+    return activity?.distance_unit === "m" ? String(meters) : String(meters / 1000);
+  }
 
+  function displayToMeters(activity, val) {
+    if (val === "" || val == null) return null;
+    const n = Number(val);
+    if (Number.isNaN(n)) return null;
+    return activity?.distance_unit === "m" ? Math.round(n) : Math.round(n * 1000);
+  }
   return (
-  <main className="min-h-screen bg-gray-100 px-6 py-10">
-    <div className="mb-6">
-      <HeaderBar onLogout={handleLogout} />
-    </div>
+    <main className="min-h-screen px-6 py-10 text-white">
+      {/* background dark + glow */}
+      <div className="fixed inset-0 -z-10 bg-[#070A12]" />
+      <div className="fixed inset-0 -z-10 bg-[radial-gradient(900px_500px_at_15%_10%,rgba(120,119,198,0.22),transparent_60%),radial-gradient(900px_500px_at_85%_10%,rgba(56,189,248,0.16),transparent_60%),radial-gradient(900px_500px_at_50%_85%,rgba(34,197,94,0.10),transparent_60%)]" />
+      <div className="fixed inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.04),transparent_35%,rgba(0,0,0,0.35))]" />
 
-    <div className="max-w-6xl mx-auto">
+      {/* header */}
+      <div className="mb-6">
+        <HeaderBar onLogout={handleLogout} />
+      </div>
+
+      {/* contenu */}
+      <div className="max-w-6xl mx-auto">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold">Dashboard</h1>
-            <p className="text-gray-600 mt-1">{email ? `User : ${email}` : "User"}</p>
-            <p className="text-gray-700 mt-4 font-medium">Voici votre semaine d’entrainement.</p>
+            <h1 className="text-3xl font-semibold tracking-tight">Ma semaine</h1>
+            <p className="text-white/55 mt-1">{email ? `User : ${email}` : "User"}</p>
+            <p className="text-white/70 mt-4 font-medium">Voici votre semaine d’entrainement.</p>
           </div>
         </div>
 
         {/* Navigation semaine */}
-          <div className="mt-6 flex items-center justify-center gap-4">
-            <button
-              className="w-10 h-10 rounded-full bg-white border flex items-center justify-center hover:bg-gray-50"
-              onClick={() => {
-                const prev = new Date(weekStart);
-                prev.setDate(prev.getDate() - 7);
-                setWeekStart(startOfWeekMonday(prev));
-              }}
-              aria-label="Semaine précédente"
-            >
-              <ChevronLeft size={20} />
-            </button>
+        <div className="mt-6 flex items-center justify-center gap-4">
+          <button
+            className="w-10 h-10 rounded-full border border-white/10 bg-white/5 backdrop-blur flex items-center justify-center hover:bg-white/10 active:scale-[0.98] transition"
+            onClick={() => {
+              const prev = new Date(weekStart);
+              prev.setDate(prev.getDate() - 7);
+              setWeekStart(startOfWeekMonday(prev));
+            }}
+            aria-label="Semaine précédente"
+            type="button"
+          >
+            <ChevronLeft size={20} />
+          </button>
 
-            <div className="text-center">
-              <div className="font-semibold text-lg">
-                Semaine {getISOWeekNumber(weekStart)}
-                {" — "}
-                {formatFRShort(weekDays[0])} au {formatFRShort(weekDays[6])}
-              </div>
+          <div className="px-5 py-2 rounded-full border border-white/10 bg-white/5 backdrop-blur">
+            <div className="font-medium text-sm sm:text-base text-white/90">
+              Semaine {getISOWeekNumber(weekStart)}{" "}
+              <span className="text-white/50">•</span>{" "}
+              <span className="text-white/75">
+                {formatFRShort(weekDays[0])} → {formatFRShort(weekDays[6])}
+              </span>
             </div>
-
-            <button
-              className="w-10 h-10 rounded-full bg-white border flex items-center justify-center hover:bg-gray-50"
-              onClick={() => {
-                const next = new Date(weekStart);
-                next.setDate(next.getDate() + 7);
-                setWeekStart(startOfWeekMonday(next));
-              }}
-              aria-label="Semaine suivante"
-            >
-              <ChevronRight size={20} />
-            </button>
           </div>
+
+          <button
+            className="w-10 h-10 rounded-full border border-white/10 bg-white/5 backdrop-blur flex items-center justify-center hover:bg-white/10 active:scale-[0.98] transition"
+            onClick={() => {
+              const next = new Date(weekStart);
+              next.setDate(next.getDate() + 7);
+              setWeekStart(startOfWeekMonday(next));
+            }}
+            aria-label="Semaine suivante"
+            type="button"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <div className="mt-8 grid grid-cols-1 sm:grid-cols-7 gap-3">
             {weekDays.map((d, i) => {
-  const dayKey = toISODate(d);
-  const items = workoutsByDate[dayKey] ?? [];
-  const dayNum = d.getDate();
+              const dayKey = toISODate(d);
+              const items = workoutsByDate[dayKey] ?? [];
+              const dayNum = d.getDate();
 
-  return (
-          <DayColumn
-            key={dayKey}
-            dayKey={dayKey}
-            className="group bg-gray-200 hover:bg-gray-500 rounded p-3 min-h-[220px] transition flex flex-col"
-          >
-            <div className="font-semibold">
-              {dayLabels[i]}{" "}
-              <span className="text-gray-600 group-hover:text-gray-100">({dayNum})</span>
-            </div>
+              const dow = dayKeyToDow(dayKey);
+              const isRest = restDay && dow === restDay;
 
-            <div className="mt-3 space-y-2">
-              <SortableContext
-                items={items.map((w) => w.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {items.length === 0 ? (
-                  <p className="text-sm text-gray-600 group-hover:text-gray-100">
-                    Aucun entrainement
-                  </p>
-                ) : (
-                  items.map((w) => (
-                    <SortableWorkout key={w.id} workout={w} onClick={openDetail} />
-                  ))
-                )}
-              </SortableContext>
-            </div>
+              return (
+                <DayColumn
+                  key={dayKey}
+                  dayKey={dayKey}
+                  className={[
+                    "group rounded-2xl p-3 min-h-[220px] transition flex flex-col",
+                    "border border-white/10 bg-white/[0.06] backdrop-blur",
+                    "hover:bg-white/[0.10] hover:border-white/15",
+                    "shadow-[0_10px_30px_rgba(0,0,0,0.25)]",
+                  ].join(" ")}
+                >
+                  <div className="font-semibold flex items-center justify-between">
+                    <div>
+                      {dayLabels[i]}{" "}
+                      <span className="text-white/50 group-hover:text-white/80">({dayNum})</span>
+                    </div>
 
-            {/* + Ajouter en bas centré (hover) */}
-            <div className="mt-auto pt-3 flex justify-center">
-              <button
-                onClick={() => openAddModal(d)}
-                className="opacity-0 group-hover:opacity-100 transition px-3 py-2 rounded bg-white/60 hover:bg-white/80 text-sm flex items-center gap-2"
-              >
-                <span className="text-lg leading-none">＋</span>
-                <span>Ajouter un entrainement</span>
-              </button>
-            </div>
-          </DayColumn>
-        );
-      })}
+                    {isRest ? (
+                      <span
+                        className="
+                          text-xs font-semibold
+                          px-2.5 py-1 rounded-full
+                          border border-white/12
+                          bg-white/5 backdrop-blur
+                          text-white/80
+                          flex items-center gap-1
+                          shadow-sm
+                          opacity-90
+                          transition
+                          group-hover:opacity-100
+                        "
+                        title="Jour de repos"
+                      >
+                        <span className="leading-none">🌙</span>
+                        <span>Repos</span>
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    <SortableContext items={items.map((w) => w.id)} strategy={verticalListSortingStrategy}>
+                      {items.length === 0 ? (
+                        <p className="text-sm text-white/45 group-hover:text-white/70">Aucun entrainement</p>
+                      ) : (
+                        items.map((w) => (
+                          <SortableWorkout
+                            key={w.id}
+                            workout={w}
+                            onClick={openDetail}
+                            onToggleDone={handleToggleDone}
+                          />
+                        ))
+                      )}
+                    </SortableContext>
+                  </div>
+
+                  {/* + Ajouter en bas centré (hover) */}
+                  <div className="mt-auto pt-3 flex justify-center">
+                    <button
+                      onClick={() => openAddModal(d)}
+                      className="opacity-0 group-hover:opacity-100 transition px-3 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-sm text-white/80 flex items-center gap-2"
+                    >
+                      <span className="text-lg leading-none">＋</span>
+                      <span>Ajouter un entrainement</span>
+                    </button>
+                  </div>
+                </DayColumn>
+              );
+            })}
           </div>
         </DndContext>
+
         <WeeklySummary
-        workoutsByDate={workoutsByDate}
-        activities={activities}
-        weekDays={weekDays}
-          goals={{ minutes: 360, workouts: 5 }} // 6h / 8 séances
-      />
+          workoutsByDate={workoutsByDate}
+          activities={activities}
+          weekDays={weekDays}
+          goals={{ minutes: 360, workouts: 5 }}
+        />
       </div>
 
       {/* MODAL ADD */}
@@ -907,6 +1039,68 @@ export default function DashboardPage() {
         </div>
       </Modal>
 
+      <Modal
+        open={doneOpen}
+        title="Séance réalisée ✅"
+        onClose={() => {
+          setDoneOpen(false);
+          setDoneWorkout(null);
+        }}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600">
+            Tu peux ajuster les stats réelles (optionnel). Sinon, on garde les valeurs prévues.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="block">
+              <div className="text-sm font-medium mb-1">Durée réelle (hh:mm)</div>
+              <input
+                type="time"
+                className="border rounded px-3 py-2 w-full"
+                value={actualDurationHHMM}
+                onChange={(e) => setActualDurationHHMM(e.target.value)}
+              />
+            </label>
+
+            <label className="block">
+              <div className="text-sm font-medium mb-1">Distance réelle</div>
+              <input
+                className="border rounded px-3 py-2 w-full"
+                value={actualDistanceInput}
+                onChange={(e) => setActualDistanceInput(e.target.value)}
+                placeholder={doneWorkout?.activity?.distance_unit === "m" ? "m" : "km"}
+              />
+            </label>
+          </div>
+
+          <label className="block">
+            <div className="text-sm font-medium mb-1">Notes réelles (optionnel)</div>
+            <textarea
+              className="border rounded px-3 py-2 w-full min-h-[80px]"
+              value={actualNotes}
+              onChange={(e) => setActualNotes(e.target.value)}
+              placeholder="Ex: séance plus dure, météo, sensations..."
+            />
+          </label>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              className="px-4 py-2 border rounded"
+              onClick={() => {
+                setDoneOpen(false);
+                setDoneWorkout(null);
+              }}
+            >
+              Annuler
+            </button>
+            <button className="px-4 py-2 bg-black text-white rounded" onClick={confirmDone}>
+              Valider ✅
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* MODAL DETAIL */}
       <Modal
         open={detailOpen}
@@ -923,16 +1117,16 @@ export default function DashboardPage() {
                 className="inline-block w-3 h-3 rounded"
                 style={{ backgroundColor: selectedWorkout.activity?.color ?? "#999" }}
               />
-              <p className="font-semibold">
-                {selectedWorkout.title || selectedWorkout.activity?.name}
-              </p>
+              <p className="font-semibold">{selectedWorkout.title || selectedWorkout.activity?.name}</p>
             </div>
 
             <p className="text-sm text-gray-600">{selectedWorkout.workout_date}</p>
 
             <div className="text-sm">
               {selectedWorkout.duration_min != null ? (
-                <p>Durée : {minutesToHHMM(selectedWorkout.duration_min)} (≈ {selectedWorkout.duration_min} min)</p>
+                <p>
+                  Durée : {minutesToHHMM(selectedWorkout.duration_min)} (≈ {selectedWorkout.duration_min} min)
+                </p>
               ) : (
                 <p>Durée : —</p>
               )}
@@ -956,15 +1150,14 @@ export default function DashboardPage() {
             ) : null}
 
             <div className="flex justify-end gap-2">
-              {/* édition : on la fera juste après (prochaine étape) */}
               <button
-                 className="px-4 py-2 border rounded"
-                 onClick={() => {
-                   const w = selectedWorkout;
-                   setDetailOpen(false);
-                   setSelectedWorkout(null);
-                   openEditModal(w);
-                 }}
+                className="px-4 py-2 border rounded"
+                onClick={() => {
+                  const w = selectedWorkout;
+                  setDetailOpen(false);
+                  setSelectedWorkout(null);
+                  openEditModal(w);
+                }}
               >
                 Modifier
               </button>

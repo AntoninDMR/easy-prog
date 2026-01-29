@@ -56,21 +56,67 @@ function getISOWeekNumber(date) {
   return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
+/* ---------------- UI primitives ---------------- */
+
+function GlassCard({ className = "", children }) {
+  return (
+    <div
+      className={[
+        "rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-xl",
+        "shadow-[0_10px_30px_rgba(0,0,0,0.35)]",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </div>
+  );
+}
+
+function IconButton({ children, onClick, title }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={[
+        "w-10 h-10 rounded-full",
+        "border border-white/10 bg-white/5 backdrop-blur",
+        "text-white/80 hover:text-white",
+        "hover:bg-white/10 transition",
+        "shadow-[0_8px_22px_rgba(0,0,0,0.35)]",
+        "flex items-center justify-center",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
 /* ---------------- Modal ---------------- */
 
 function Modal({ open, title, children, onClose }) {
   if (!open) return null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-white rounded-xl shadow p-5">
-        <div className="flex items-center justify-between gap-4 mb-4">
-          <h2 className="text-lg font-bold">{title}</h2>
-          <button className="px-3 py-2 border rounded" onClick={onClose}>
-            Fermer
-          </button>
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+
+      <div className="relative w-full max-w-lg">
+        <div className="rounded-2xl border border-white/10 bg-[#0B1020]/80 backdrop-blur-2xl shadow-[0_20px_60px_rgba(0,0,0,0.55)] p-5">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <h2 className="text-lg font-semibold text-white/90">{title}</h2>
+            <button
+              type="button"
+              className="px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white transition"
+              onClick={onClose}
+            >
+              Fermer
+            </button>
+          </div>
+
+          {children}
         </div>
-        {children}
       </div>
     </div>
   );
@@ -92,7 +138,7 @@ export default function CalendarPage() {
     return d;
   });
 
-  // activités + séances chargées sur la plage (début semaine -> fin semaine)
+  // activités + séances
   const [activities, setActivities] = useState([]);
   const [workoutsByDate, setWorkoutsByDate] = useState({});
 
@@ -127,20 +173,20 @@ export default function CalendarPage() {
   }
 
   // Construire la plage du mois en semaines complètes (Lun->Dim)
-  const { gridStart, gridEnd, monthDays, weeks } = useMemo(() => {
+  const { gridStart, gridEnd, weeks } = useMemo(() => {
     const first = new Date(monthCursor);
     first.setDate(1);
     first.setHours(0, 0, 0, 0);
 
     const last = new Date(monthCursor);
     last.setMonth(last.getMonth() + 1);
-    last.setDate(0); // dernier jour du mois
+    last.setDate(0);
     last.setHours(0, 0, 0, 0);
 
     const start = startOfWeekMonday(first);
 
     const end = new Date(last);
-    while (end.getDay() !== 0) end.setDate(end.getDate() + 1); // jusqu'à dimanche
+    while (end.getDay() !== 0) end.setDate(end.getDate() + 1);
     end.setHours(0, 0, 0, 0);
 
     const days = [];
@@ -155,7 +201,7 @@ export default function CalendarPage() {
       wk.push(days.slice(i, i + 7));
     }
 
-    return { gridStart: start, gridEnd: end, monthDays: days, weeks: wk };
+    return { gridStart: start, gridEnd: end, weeks: wk };
   }, [monthCursor]);
 
   async function ensureDefaultActivities(uid) {
@@ -231,6 +277,7 @@ export default function CalendarPage() {
       await loadActivities(data.user.id);
     }
     init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   useEffect(() => {
@@ -255,9 +302,7 @@ export default function CalendarPage() {
     const parts = [act.name];
     if (durationMin != null) parts.push(`${durationMin} min`);
     if (distanceM != null) {
-      parts.push(
-        act.distance_unit === "m" ? `${distanceM} m` : `${(distanceM / 1000).toFixed(1)} km`
-      );
+      parts.push(act.distance_unit === "m" ? `${distanceM} m` : `${(distanceM / 1000).toFixed(1)} km`);
     }
     return parts.join(" — ");
   }
@@ -367,47 +412,65 @@ export default function CalendarPage() {
     setMonthCursor(d);
   }
 
+  const monthTitle = monthLabelFR(monthCursor);
+
   return (
-    <main className="min-h-screen bg-gray-100 px-6 py-8">
-      <HeaderBar onLogout={handleLogout} />
+    <main className="min-h-screen px-6 py-10 text-white">
+      {/* background dark + glow (comme dashboard) */}
+      <div className="fixed inset-0 -z-10 bg-[#070A12]" />
+      <div className="fixed inset-0 -z-10 bg-[radial-gradient(900px_500px_at_15%_10%,rgba(120,119,198,0.22),transparent_60%),radial-gradient(900px_500px_at_85%_10%,rgba(56,189,248,0.16),transparent_60%),radial-gradient(900px_500px_at_50%_85%,rgba(34,197,94,0.10),transparent_60%)]" />
+      <div className="fixed inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.04),transparent_35%,rgba(0,0,0,0.35))]" />
 
-      <div className="max-w-6xl mx-auto mt-6">
+      {/* header */}
+      <div className="mb-6">
+        <HeaderBar onLogout={handleLogout} />
+      </div>
+
+      <div className="max-w-6xl mx-auto">
+        {/* title */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-semibold text-white/90">Planifier</h1>
+            <p className="text-sm text-white/50 mt-1">{email ? `User : ${email}` : "User"}</p>
+            <p className="text-white/65 mt-4 font-medium">Planifie tes séances sur le mois.</p>
+          </div>
+        </div>
+
         {/* Navigation mois */}
-        <div className="flex items-center justify-center gap-4">
-          <button
-            className="p-2 rounded border bg-white hover:bg-gray-50"
-            onClick={prevMonth}
-            title="Mois précédent"
-          >
+        <div className="mt-6 flex items-center justify-center gap-4">
+          <IconButton onClick={prevMonth} title="Mois précédent">
             <ChevronLeft size={18} />
-          </button>
+          </IconButton>
 
-          <div className="font-bold text-lg capitalize">{monthLabelFR(monthCursor)}</div>
+          <div className="text-center">
+            <div className="font-semibold text-lg capitalize text-white/90">{monthTitle}</div>
+            <div className="text-xs text-white/45">
+              {toISODate(gridStart)} → {toISODate(gridEnd)}
+            </div>
+          </div>
 
-          <button
-            className="p-2 rounded border bg-white hover:bg-gray-50"
-            onClick={nextMonth}
-            title="Mois suivant"
-          >
+          <IconButton onClick={nextMonth} title="Mois suivant">
             <ChevronRight size={18} />
-          </button>
+          </IconButton>
         </div>
 
         {/* Semaines empilées */}
-        <div className="mt-8 space-y-8">
+        <div className="mt-10 space-y-10">
           {weeks.map((week, wi) => {
             const weekStart = week[0];
             const weekEnd = week[6];
             const weekNo = getISOWeekNumber(weekStart);
 
             return (
-              <section key={`${toISODate(weekStart)}-${wi}`} className="space-y-3">
-                {/* En-tête semaine (comme dashboard) */}
-                <div className="flex items-center justify-center font-bold text-lg">
-                  Semaine {weekNo} — {formatFRShort(weekStart)} au {formatFRShort(weekEnd)}
+              <section key={`${toISODate(weekStart)}-${wi}`} className="space-y-4">
+                {/* header semaine */}
+                <div className="flex items-center justify-center">
+                  <div className="text-sm sm:text-base font-semibold text-white/85">
+                    Semaine {weekNo} — {formatFRShort(weekStart)} au {formatFRShort(weekEnd)}
+                  </div>
                 </div>
 
-                {/* 7 colonnes */}
+                {/* grid 7 jours */}
                 <div className="grid grid-cols-1 sm:grid-cols-7 gap-3">
                   {week.map((d, i) => {
                     const dayKey = toISODate(d);
@@ -416,50 +479,69 @@ export default function CalendarPage() {
                     const dayNum = d.getDate();
 
                     return (
-                      <div
+                      <GlassCard
                         key={dayKey}
                         className={[
-                          "group rounded p-3 min-h-[220px] transition flex flex-col",
-                          "bg-gray-200 hover:bg-gray-500",
-                          inMonth ? "opacity-100" : "opacity-40",
+                          "group p-3 min-h-[220px] transition flex flex-col",
+                          inMonth ? "opacity-100" : "opacity-45",
+                          "hover:bg-white/[0.085]",
                         ].join(" ")}
                       >
-                        <div className="font-semibold">
-                          {dayLabels[i]}{" "}
-                          <span className="text-gray-600 group-hover:text-gray-100">
-                            ({dayNum})
-                          </span>
+                        <div className="font-semibold text-white/85 flex items-center justify-between">
+                          <div>
+                            {dayLabels[i]}{" "}
+                            <span className="text-white/45 group-hover:text-white/70">({dayNum})</span>
+                          </div>
+
+                          {/* mini badge si hors mois */}
+                          {!inMonth ? (
+                            <span className="text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5 text-white/50">
+                              hors mois
+                            </span>
+                          ) : null}
                         </div>
 
                         <div className="mt-3 space-y-2">
                           {items.length === 0 ? (
-                            <p className="text-sm text-gray-600 group-hover:text-gray-100">
+                            <p className="text-sm text-white/40 group-hover:text-white/55">
                               Aucun entrainement
                             </p>
                           ) : (
                             items.map((w) => {
                               const color = w.activity?.color ?? "#999999";
-                              const bg = `${color}22`;
-                              const border = `${color}55`;
-
+                              // rendu “glass coloré”
                               return (
                                 <div
                                   key={w.id}
-                                  className="rounded px-2 py-2 text-sm select-none border hover:brightness-95 transition"
-                                  style={{ backgroundColor: bg, borderColor: border }}
+                                  className={[
+                                    "rounded-xl border px-2.5 py-2 text-sm select-none transition",
+                                    "bg-white/[0.04] hover:bg-white/[0.07]",
+                                    "border-white/10",
+                                  ].join(" ")}
+                                  style={{
+                                    boxShadow: "0 10px 24px rgba(0,0,0,0.25)",
+                                  }}
                                   title={w.title}
                                 >
-                                  <div className="font-medium">
-                                    {w.title || w.activity?.name || "Séance"}
-                                  </div>
-                                  <div className="text-xs text-gray-700 mt-1">
-                                    {w.duration_min != null ? `${w.duration_min} min` : ""}
-                                    {w.duration_min != null && w.distance_m != null ? " • " : ""}
-                                    {w.distance_m != null
-                                      ? w.activity?.distance_unit === "m"
-                                        ? `${w.distance_m} m`
-                                        : `${(w.distance_m / 1000).toFixed(1)} km`
-                                      : ""}
+                                  <div className="flex items-start gap-2">
+                                    <span
+                                      className="mt-1 inline-block w-2.5 h-2.5 rounded"
+                                      style={{ backgroundColor: color }}
+                                    />
+                                    <div className="min-w-0">
+                                      <div className="font-medium text-white/90 truncate">
+                                        {w.title || w.activity?.name || "Séance"}
+                                      </div>
+                                      <div className="text-xs text-white/55 mt-1">
+                                        {w.duration_min != null ? `${w.duration_min} min` : ""}
+                                        {w.duration_min != null && w.distance_m != null ? " • " : ""}
+                                        {w.distance_m != null
+                                          ? w.activity?.distance_unit === "m"
+                                            ? `${w.distance_m} m`
+                                            : `${(w.distance_m / 1000).toFixed(1)} km`
+                                          : ""}
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
                               );
@@ -467,17 +549,25 @@ export default function CalendarPage() {
                           )}
                         </div>
 
-                        {/* + Ajouter en bas centré (hover) */}
+                        {/* + Ajouter */}
                         <div className="mt-auto pt-3 flex justify-center">
                           <button
+                            type="button"
                             onClick={() => openAddModal(d)}
-                            className="opacity-0 group-hover:opacity-100 transition px-3 py-2 rounded bg-white/60 hover:bg-white/80 text-sm flex items-center gap-2"
+                            className={[
+                              "opacity-0 group-hover:opacity-100 transition",
+                              "px-3 py-2 rounded-xl",
+                              "border border-white/10 bg-white/5 backdrop-blur",
+                              "hover:bg-white/10 text-sm text-white/85",
+                              "flex items-center gap-2",
+                              "shadow-[0_10px_24px_rgba(0,0,0,0.35)]",
+                            ].join(" ")}
                           >
                             <span className="text-lg leading-none">＋</span>
-                            <span>Ajouter un entrainement</span>
+                            <span>Ajouter</span>
                           </button>
                         </div>
-                      </div>
+                      </GlassCard>
                     );
                   })}
                 </div>
@@ -494,18 +584,19 @@ export default function CalendarPage() {
         onClose={() => setAddOpen(false)}
       >
         <div className="space-y-3">
+          {/* Activité */}
           <label className="block">
-            <div className="text-sm font-medium mb-1">Activité (obligatoire)</div>
+            <div className="text-sm font-medium mb-1 text-white/85">Activité (obligatoire)</div>
 
             {!createActivity ? (
               <select
-                className="border rounded px-3 py-2 w-full"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white/90 outline-none focus:ring-2 focus:ring-white/20"
                 value={activityId}
                 onChange={(e) => setActivityId(e.target.value)}
               >
                 <option value="">— choisir —</option>
                 {activities.map((a) => (
-                  <option key={a.id} value={a.id}>
+                  <option key={a.id} value={a.id} className="text-black">
                     {a.name} ({a.distance_unit})
                   </option>
                 ))}
@@ -513,30 +604,34 @@ export default function CalendarPage() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <input
-                  className="border rounded px-3 py-2"
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white/90 outline-none focus:ring-2 focus:ring-white/20"
                   placeholder="Nom (ex: Yoga)"
                   value={newActName}
                   onChange={(e) => setNewActName(e.target.value)}
                 />
                 <input
                   type="color"
-                  className="border rounded px-3 py-2 h-[42px]"
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 h-[42px]"
                   value={newActColor}
                   onChange={(e) => setNewActColor(e.target.value)}
                   title="Couleur"
                 />
                 <select
-                  className="border rounded px-3 py-2"
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white/90 outline-none focus:ring-2 focus:ring-white/20"
                   value={newActUnit}
                   onChange={(e) => setNewActUnit(e.target.value)}
                 >
-                  <option value="km">km</option>
-                  <option value="m">m</option>
+                  <option value="km" className="text-black">
+                    km
+                  </option>
+                  <option value="m" className="text-black">
+                    m
+                  </option>
                 </select>
               </div>
             )}
 
-            <label className="flex items-center gap-2 mt-2 text-sm">
+            <label className="flex items-center gap-2 mt-2 text-sm text-white/70">
               <input
                 type="checkbox"
                 checked={createActivity}
@@ -544,15 +639,17 @@ export default function CalendarPage() {
                   setCreateActivity(e.target.checked);
                   setActivityId("");
                 }}
+                className="accent-white"
               />
               Créer une nouvelle activité
             </label>
           </label>
 
+          {/* Titre */}
           <label className="block">
-            <div className="text-sm font-medium mb-1">Titre (optionnel)</div>
+            <div className="text-sm font-medium mb-1 text-white/85">Titre (optionnel)</div>
             <input
-              className="border rounded px-3 py-2 w-full"
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white/90 outline-none focus:ring-2 focus:ring-white/20"
               placeholder="Sinon on génère automatiquement"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -561,43 +658,49 @@ export default function CalendarPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block">
-              <div className="text-sm font-medium mb-1">Durée (hh:mm)</div>
+              <div className="text-sm font-medium mb-1 text-white/85">Durée (hh:mm)</div>
               <input
                 type="time"
-                className="border rounded px-3 py-2 w-full"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white/90 outline-none focus:ring-2 focus:ring-white/20"
                 value={durationHHMM}
                 onChange={(e) => setDurationHHMM(e.target.value)}
               />
-              <p className="text-xs text-gray-600 mt-1">Stocké en minutes.</p>
+              <p className="text-xs text-white/45 mt-1">Stocké en minutes.</p>
             </label>
 
             <label className="block">
-              <div className="text-sm font-medium mb-1">Distance (optionnel)</div>
+              <div className="text-sm font-medium mb-1 text-white/85">Distance (optionnel)</div>
               <input
-                className="border rounded px-3 py-2 w-full"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white/90 outline-none focus:ring-2 focus:ring-white/20"
                 placeholder="km ou m selon activité"
                 value={distanceInput}
                 onChange={(e) => setDistanceInput(e.target.value)}
               />
-              <p className="text-xs text-gray-600 mt-1">Stocké en mètres.</p>
+              <p className="text-xs text-white/45 mt-1">Stocké en mètres.</p>
             </label>
           </div>
 
+          {/* Notes */}
           <label className="block">
-            <div className="text-sm font-medium mb-1">Notes (optionnel)</div>
+            <div className="text-sm font-medium mb-1 text-white/85">Notes (optionnel)</div>
             <textarea
-              className="border rounded px-3 py-2 w-full min-h-[90px]"
+              className="w-full min-h-[90px] rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white/90 outline-none focus:ring-2 focus:ring-white/20"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
           </label>
 
           <div className="flex justify-end gap-2 pt-2">
-            <button className="px-4 py-2 border rounded" onClick={() => setAddOpen(false)}>
+            <button
+              type="button"
+              className="px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white transition"
+              onClick={() => setAddOpen(false)}
+            >
               Annuler
             </button>
             <button
-              className="px-4 py-2 bg-black text-white rounded"
+              type="button"
+              className="px-4 py-2 rounded-xl bg-white text-black hover:bg-white/90 transition"
               onClick={() => {
                 if (!createActivity && !activityId) {
                   alert("Choisis une activité (ou coche 'Créer une activité').");
