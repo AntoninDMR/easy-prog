@@ -5,8 +5,15 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import HeaderBar from "@/components/HeaderBar";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import WeekPlanner from "@/components/WeekPlanner";
 
 /* ---------------- utils dates ---------------- */
+
+function dayKeyToDow(isoDate) {
+  const d = new Date(isoDate + "T00:00:00");
+  const map = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  return map[d.getDay()];
+}
 
 function toISODate(d) {
   const year = d.getFullYear();
@@ -50,27 +57,13 @@ function formatFRShort(date) {
 
 function getISOWeekNumber(date) {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7; // lun=1..dim=7
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum); // jeudi de la semaine ISO
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
 /* ---------------- UI primitives ---------------- */
-
-function GlassCard({ className = "", children }) {
-  return (
-    <div
-      className={[
-        "rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-xl",
-        "shadow-[0_10px_30px_rgba(0,0,0,0.35)]",
-        className,
-      ].join(" ")}
-    >
-      {children}
-    </div>
-  );
-}
 
 function IconButton({ children, onClick, title }) {
   return (
@@ -245,6 +238,7 @@ export default function CalendarPage() {
       .select(
         "id, workout_date, position, activity_id, title, duration_min, distance_m, notes, advanced, activity:activities(id,name,color,distance_unit)"
       )
+      .eq("user_id", uid)
       .gte("workout_date", from)
       .lte("workout_date", to)
       .order("workout_date", { ascending: true })
@@ -277,13 +271,11 @@ export default function CalendarPage() {
       await loadActivities(data.user.id);
     }
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   useEffect(() => {
     if (!userId) return;
     loadMonthWorkouts(userId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, gridStart, gridEnd]);
 
   async function handleLogout() {
@@ -302,7 +294,11 @@ export default function CalendarPage() {
     const parts = [act.name];
     if (durationMin != null) parts.push(`${durationMin} min`);
     if (distanceM != null) {
-      parts.push(act.distance_unit === "m" ? `${distanceM} m` : `${(distanceM / 1000).toFixed(1)} km`);
+      parts.push(
+        act.distance_unit === "m"
+          ? `${distanceM} m`
+          : `${(distanceM / 1000).toFixed(1)} km`
+      );
     }
     return parts.join(" — ");
   }
@@ -402,6 +398,7 @@ export default function CalendarPage() {
     const d = new Date(monthCursor);
     d.setMonth(d.getMonth() - 1);
     d.setDate(1);
+    d.setHours(0, 0, 0, 0);
     setMonthCursor(d);
   }
 
@@ -409,6 +406,7 @@ export default function CalendarPage() {
     const d = new Date(monthCursor);
     d.setMonth(d.getMonth() + 1);
     d.setDate(1);
+    d.setHours(0, 0, 0, 0);
     setMonthCursor(d);
   }
 
@@ -416,7 +414,7 @@ export default function CalendarPage() {
 
   return (
     <main className="min-h-screen px-6 py-10 text-white">
-      {/* background dark + glow (comme dashboard) */}
+      {/* background dark + glow */}
       <div className="fixed inset-0 -z-10 bg-[#070A12]" />
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(900px_500px_at_15%_10%,rgba(120,119,198,0.22),transparent_60%),radial-gradient(900px_500px_at_85%_10%,rgba(56,189,248,0.16),transparent_60%),radial-gradient(900px_500px_at_50%_85%,rgba(34,197,94,0.10),transparent_60%)]" />
       <div className="fixed inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.04),transparent_35%,rgba(0,0,0,0.35))]" />
@@ -461,116 +459,101 @@ export default function CalendarPage() {
             const weekEnd = week[6];
             const weekNo = getISOWeekNumber(weekStart);
 
+            const weekDayKeys = week.map((d) => toISODate(d)); // pour limiter les moves à la semaine
+
             return (
-              <section key={`${toISODate(weekStart)}-${wi}`} className="space-y-4">
-                {/* header semaine */}
-                <div className="flex items-center justify-center">
-                  <div className="text-sm sm:text-base font-semibold text-white/85">
-                    Semaine {weekNo} — {formatFRShort(weekStart)} au {formatFRShort(weekEnd)}
-                  </div>
+              <section key={`${toISODate(weekStart)}-${wi}`} className="space-y-3">
+                <div className="flex items-center justify-center font-semibold text-white/80">
+                  Semaine {weekNo} — {formatFRShort(weekStart)} au {formatFRShort(weekEnd)}
                 </div>
 
-                {/* grid 7 jours */}
-                <div className="grid grid-cols-1 sm:grid-cols-7 gap-3">
-                  {week.map((d, i) => {
-                    const dayKey = toISODate(d);
-                    const items = workoutsByDate[dayKey] ?? [];
-                    const inMonth = d.getMonth() === monthCursor.getMonth();
-                    const dayNum = d.getDate();
+                <WeekPlanner
+                  weekDays={week}
+                  workoutsByDate={workoutsByDate}
+                  dayLabels={dayLabels}
+                  restDay={null}
+                  dayKeyToDow={dayKeyToDow}
+                  onAdd={openAddModal}
+                  onOpenDetail={() => {}}
+                  onMoveWorkout={async ({ activeId, overId, fromDayKey, toDayKey }) => {
+                    // ✅ Simplifié: on refuse les déplacements hors de la semaine affichée
+                    if (!weekDayKeys.includes(fromDayKey) || !weekDayKeys.includes(toDayKey)) return;
 
-                    return (
-                      <GlassCard
-                        key={dayKey}
-                        className={[
-                          "group p-3 min-h-[220px] transition flex flex-col",
-                          inMonth ? "opacity-100" : "opacity-45",
-                          "hover:bg-white/[0.085]",
-                        ].join(" ")}
-                      >
-                        <div className="font-semibold text-white/85 flex items-center justify-between">
-                          <div>
-                            {dayLabels[i]}{" "}
-                            <span className="text-white/45 group-hover:text-white/70">({dayNum})</span>
-                          </div>
+                    const fromItems = workoutsByDate[fromDayKey] ?? [];
+                    const toItems = workoutsByDate[toDayKey] ?? [];
 
-                          {/* mini badge si hors mois */}
-                          {!inMonth ? (
-                            <span className="text-[11px] px-2 py-1 rounded-full border border-white/10 bg-white/5 text-white/50">
-                              hors mois
-                            </span>
-                          ) : null}
-                        </div>
+                    const activeIndex = fromItems.findIndex((w) => w.id === activeId);
+                    if (activeIndex === -1) return;
 
-                        <div className="mt-3 space-y-2">
-                          {items.length === 0 ? (
-                            <p className="text-sm text-white/40 group-hover:text-white/55">
-                              Aucun entrainement
-                            </p>
-                          ) : (
-                            items.map((w) => {
-                              const color = w.activity?.color ?? "#999999";
-                              // rendu “glass coloré”
-                              return (
-                                <div
-                                  key={w.id}
-                                  className={[
-                                    "rounded-xl border px-2.5 py-2 text-sm select-none transition",
-                                    "bg-white/[0.04] hover:bg-white/[0.07]",
-                                    "border-white/10",
-                                  ].join(" ")}
-                                  style={{
-                                    boxShadow: "0 10px 24px rgba(0,0,0,0.25)",
-                                  }}
-                                  title={w.title}
-                                >
-                                  <div className="flex items-start gap-2">
-                                    <span
-                                      className="mt-1 inline-block w-2.5 h-2.5 rounded"
-                                      style={{ backgroundColor: color }}
-                                    />
-                                    <div className="min-w-0">
-                                      <div className="font-medium text-white/90 truncate">
-                                        {w.title || w.activity?.name || "Séance"}
-                                      </div>
-                                      <div className="text-xs text-white/55 mt-1">
-                                        {w.duration_min != null ? `${w.duration_min} min` : ""}
-                                        {w.duration_min != null && w.distance_m != null ? " • " : ""}
-                                        {w.distance_m != null
-                                          ? w.activity?.distance_unit === "m"
-                                            ? `${w.distance_m} m`
-                                            : `${(w.distance_m / 1000).toFixed(1)} km`
-                                          : ""}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
+                    const moved = fromItems[activeIndex];
+                    const newFrom = fromItems.filter((w) => w.id !== activeId);
 
-                        {/* + Ajouter */}
-                        <div className="mt-auto pt-3 flex justify-center">
-                          <button
-                            type="button"
-                            onClick={() => openAddModal(d)}
-                            className={[
-                              "opacity-0 group-hover:opacity-100 transition",
-                              "px-3 py-2 rounded-xl",
-                              "border border-white/10 bg-white/5 backdrop-blur",
-                              "hover:bg-white/10 text-sm text-white/85",
-                              "flex items-center gap-2",
-                              "shadow-[0_10px_24px_rgba(0,0,0,0.35)]",
-                            ].join(" ")}
-                          >
-                            <span className="text-lg leading-none">＋</span>
-                            <span>Ajouter</span>
-                          </button>
-                        </div>
-                      </GlassCard>
+                    let newTo = [...toItems];
+                    const overIndexInTo = newTo.findIndex((w) => w.id === overId);
+                    const movedWithNewDate = { ...moved, workout_date: toDayKey };
+
+                    if (overIndexInTo === -1) newTo.push(movedWithNewDate);
+                    else newTo.splice(overIndexInTo, 0, movedWithNewDate);
+
+                    const reindexedFrom = newFrom.map((w, idx) => ({ ...w, position: idx }));
+                    const reindexedTo = newTo.map((w, idx) => ({ ...w, position: idx }));
+
+                    // optimistic UI
+                    setWorkoutsByDate((prev) => ({
+                      ...prev,
+                      [fromDayKey]: reindexedFrom,
+                      [toDayKey]: reindexedTo,
+                    }));
+
+                    // persist DB (uniquement les 2 jours)
+                    const updates = [];
+
+                    const newPos = reindexedTo.findIndex((w) => w.id === activeId);
+                    updates.push(
+                      supabase
+                        .from("workouts")
+                        .update({
+                          workout_date: toDayKey,
+                          position: newPos,
+                          updated_at: new Date().toISOString(),
+                        })
+                        .eq("id", activeId)
                     );
-                  })}
-                </div>
+
+                    for (const w of reindexedFrom) {
+                      updates.push(
+                        supabase
+                          .from("workouts")
+                          .update({
+                            position: w.position,
+                            updated_at: new Date().toISOString(),
+                          })
+                          .eq("id", w.id)
+                      );
+                    }
+
+                    for (const w of reindexedTo) {
+                      if (w.id === activeId) continue;
+                      updates.push(
+                        supabase
+                          .from("workouts")
+                          .update({
+                            position: w.position,
+                            updated_at: new Date().toISOString(),
+                          })
+                          .eq("id", w.id)
+                      );
+                    }
+
+                    const results = await Promise.all(updates);
+                    const anyError = results.find((r) => r.error)?.error;
+                    if (anyError) {
+                      alert("Erreur sauvegarde: " + anyError.message);
+                      // rollback simple: reload month
+                      await loadMonthWorkouts(userId);
+                    }
+                  }}
+                />
               </section>
             );
           })}
